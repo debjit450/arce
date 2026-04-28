@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARCE Dashboard</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Distributed Adaptive Traffic Control</p>
+          <h1>See rate limits change before abuse becomes an outage.</h1>
+          <p class="lede">
+            ARCE combines Redis-backed distributed limits, adaptive policies,
+            and pragmatic abuse signals for API workloads that need more than a
+            fixed threshold.
+          </p>
+        </div>
+        <div class="status-pill" id="last-updated">Waiting for data</div>
+      </section>
+
+      <section class="card-grid" id="totals-grid">
+        <article class="metric-card">
+          <span>Total Requests</span>
+          <strong id="requests-total">0</strong>
+        </article>
+        <article class="metric-card">
+          <span>Allowed</span>
+          <strong id="allowed-total">0</strong>
+        </article>
+        <article class="metric-card">
+          <span>Rate Limited</span>
+          <strong id="rate-limited-total">0</strong>
+        </article>
+        <article class="metric-card">
+          <span>Blocked</span>
+          <strong id="blocked-total">0</strong>
+        </article>
+        <article class="metric-card accent">
+          <span>Flagged Anomalies</span>
+          <strong id="anomalies-total">0</strong>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Live Rate</p>
+            <h2>Last 30 minutes</h2>
+          </div>
+        </div>
+        <div class="chart" id="traffic-chart"></div>
+      </section>
+
+      <section class="panel two-column">
+        <div>
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Active Blocks</p>
+              <h2>Subjects currently blocked</h2>
+            </div>
+          </div>
+          <div class="list" id="active-blocks"></div>
+        </div>
+
+        <div>
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Recent Anomalies</p>
+              <h2>Behavior worth investigating</h2>
+            </div>
+          </div>
+          <div class="list" id="recent-anomalies"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/dashboard.js"></script>
+  </body>
+</html>
