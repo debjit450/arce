@@ -124,12 +124,14 @@ export class LimiterService {
       };
     }
 
-    await this.behaviorStore.recordOutcome(subject, {
-      allowed: result.allowed,
-      blocked: result.blocked,
-      timestampMs: nowMs
-    });
-    await this.metricsStore.recordDecision(result);
+    await Promise.all([
+      this.behaviorStore.recordOutcome(subject, {
+        allowed: result.allowed,
+        blocked: result.blocked,
+        timestampMs: nowMs
+      }),
+      this.metricsStore.recordDecision(result)
+    ]);
     return result;
   }
 

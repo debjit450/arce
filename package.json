@@ -27,7 +27,7 @@
     "traffic-control",
     "express"
   ],
-  "author": "",
+  "author": "ARCE contributors",
   "license": "MIT",
   "engines": {
     "node": ">=20"

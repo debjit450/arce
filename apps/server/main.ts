@@ -8,6 +8,8 @@ import { MetricsStore } from "../../src/store/metrics-store";
 import { createRedisConnection } from "../../src/store/redis";
 import { RedisRateLimiterStore } from "../../src/store/rate-limiter-store";
 
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
 async function bootstrap(): Promise<void> {
   const redis = await createRedisConnection();
   const prefix = runtimeConfig.serviceName;
@@ -36,8 +38,18 @@ async function bootstrap(): Promise<void> {
   });
 
   const shutdown = (): void => {
+    console.log("Shutting down gracefully...");
+
+    const forceExit = setTimeout(() => {
+      console.error("Graceful shutdown timed out. Forcing exit.");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+
+    forceExit.unref();
+
     server.close(async () => {
       await redis.quit();
+      clearTimeout(forceExit);
       process.exit(0);
     });
   };
