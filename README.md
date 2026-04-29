@@ -101,6 +101,7 @@ Additional design notes:
 
 - [docs/architecture.md](./docs/architecture.md)
 - [docs/design-decisions.md](./docs/design-decisions.md)
+- [docs/system-diagram.md](./docs/system-diagram.md)
 
 ## Design Decisions
 
@@ -208,6 +209,21 @@ http://localhost:4000/dashboard
 
 If you need non-default settings, use the variables documented in [.env.example](./.env.example).
 
+## Authentication
+
+When `API_KEY` is set in the environment, ARCE requires all protected endpoints (`/check-limit`, `/consume`, `/api/dashboard-data`) to include a matching `x-api-key` header.
+
+When `API_KEY` is not set, authentication is disabled so local development remains frictionless.
+
+```bash
+curl -X POST http://localhost:4000/consume \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-secret-key" \
+  -d '{"algorithm":"token_bucket","route":"/api/orders","method":"GET","ip":"203.0.113.8","scope":"ip"}'
+```
+
+Public endpoints (`/`, `/health`, `/dashboard`, `/static/*`) do not require authentication.
+
 ## API Example
 
 Check a limit without consuming:
@@ -251,7 +267,8 @@ Example request shape:
 import { ArceClient } from "./src/sdk/client";
 
 const client = new ArceClient({
-  baseUrl: "http://localhost:4000"
+  baseUrl: "http://localhost:4000",
+  headers: { "x-api-key": process.env.ARCE_API_KEY ?? "" }
 });
 
 const decision = await client.consume({
@@ -297,14 +314,15 @@ app.use(
 
 ## Configuration
 
-| Variable                      | Default                  | Purpose                                              |
-| ----------------------------- | ------------------------ | ---------------------------------------------------- |
-| `PORT`                        | `4000`                   | HTTP port for the ARCE server                        |
-| `REDIS_URL`                   | `redis://localhost:6379` | Redis connection string                              |
-| `SERVICE_NAME`                | `arce`                   | Prefix for Redis keys                                |
-| `DEFAULT_LIMIT_PER_MINUTE`    | `100`                    | Baseline limit for normal traffic                    |
-| `SUSPICIOUS_LIMIT_PER_MINUTE` | `20`                     | Lower bound for suspicious traffic                   |
-| `BLOCK_DURATION_SECONDS`      | `300`                    | Temporary block duration for critical abuse patterns |
+| Variable                      | Default                  | Purpose                                                          |
+| ----------------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `PORT`                        | `4000`                   | HTTP port for the ARCE server                                    |
+| `REDIS_URL`                   | `redis://localhost:6379` | Redis connection string                                          |
+| `SERVICE_NAME`                | `arce`                   | Prefix for Redis keys                                            |
+| `API_KEY`                     | _(empty, auth disabled)_ | API key for protecting `/check-limit`, `/consume`, and dashboard |
+| `DEFAULT_LIMIT_PER_MINUTE`    | `100`                    | Baseline limit for normal traffic                                |
+| `SUSPICIOUS_LIMIT_PER_MINUTE` | `20`                     | Lower bound for suspicious traffic                               |
+| `BLOCK_DURATION_SECONDS`      | `300`                    | Temporary block duration for critical abuse patterns             |
 
 ## Development
 
@@ -312,11 +330,13 @@ app.use(
 npm run build
 npm run typecheck
 npm run lint
+npm run format:check
 npm run test
 npm run smoke
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution and PR expectations.
+See [CHANGELOG.md](./CHANGELOG.md) for a history of changes.
 
 ## Roadmap
 

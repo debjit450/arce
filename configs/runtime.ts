@@ -17,6 +17,7 @@ export const runtimeConfig = {
   port: readNumber("PORT", 4000),
   redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
   serviceName: process.env.SERVICE_NAME ?? "arce",
+  apiKey: process.env.API_KEY ?? "",
   defaultLimitPerMinute: readNumber("DEFAULT_LIMIT_PER_MINUTE", 100),
   suspiciousLimitPerMinute: readNumber("SUSPICIOUS_LIMIT_PER_MINUTE", 20),
   blockDurationSeconds: readNumber("BLOCK_DURATION_SECONDS", 300)
