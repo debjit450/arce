@@ -1,3 +1,4 @@
+import { runtimeConfig } from "../../configs/runtime";
 import type { AbuseAssessment, AnomalyFlag, BehaviorSnapshot } from "../types";
 
 function push(
@@ -20,7 +21,10 @@ export function analyzeBehavior(snapshot: BehaviorSnapshot): AbuseAssessment {
       ? snapshot.recentTenSecondCount / snapshot.averageTenSecondCount
       : snapshot.recentTenSecondCount;
 
-  if (snapshot.recentTenSecondCount >= 15 && burstRatio >= 3) {
+  if (
+    snapshot.recentTenSecondCount >= runtimeConfig.abuse.burstSpikeCount &&
+    burstRatio >= runtimeConfig.abuse.burstSpikeRatio
+  ) {
     riskScore += 35;
     push(
       anomalies,
@@ -35,8 +39,10 @@ export function analyzeBehavior(snapshot: BehaviorSnapshot): AbuseAssessment {
   }
 
   if (
-    snapshot.duplicateFingerprintCount >= 8 &&
-    snapshot.duplicateFingerprintRatio >= 0.7
+    snapshot.duplicateFingerprintCount >=
+      runtimeConfig.abuse.duplicateFingerprintCount &&
+    snapshot.duplicateFingerprintRatio >=
+      runtimeConfig.abuse.duplicateFingerprintRatio
   ) {
     riskScore += 30;
     push(
@@ -51,7 +57,10 @@ export function analyzeBehavior(snapshot: BehaviorSnapshot): AbuseAssessment {
     );
   }
 
-  if (snapshot.uniqueRouteCount >= 12 && snapshot.trailingMinuteCount >= 30) {
+  if (
+    snapshot.uniqueRouteCount >= runtimeConfig.abuse.wideRouteScanCount &&
+    snapshot.trailingMinuteCount >= runtimeConfig.abuse.wideRouteScanMinuteCount
+  ) {
     riskScore += 25;
     push(
       anomalies,
@@ -65,7 +74,9 @@ export function analyzeBehavior(snapshot: BehaviorSnapshot): AbuseAssessment {
     );
   }
 
-  if (snapshot.deniedLastFiveMinutes >= 5) {
+  if (
+    snapshot.deniedLastFiveMinutes >= runtimeConfig.abuse.repeatedDenialsCount
+  ) {
     riskScore += 15;
     push(
       anomalies,
@@ -80,8 +91,8 @@ export function analyzeBehavior(snapshot: BehaviorSnapshot): AbuseAssessment {
   }
 
   if (
-    snapshot.missingUserAgentCount >= 10 &&
-    snapshot.recentTenSecondCount >= 10
+    snapshot.missingUserAgentCount >= runtimeConfig.abuse.missingUserAgentCount &&
+    snapshot.recentTenSecondCount >= runtimeConfig.abuse.missingUserAgentCount
   ) {
     riskScore += 10;
     push(

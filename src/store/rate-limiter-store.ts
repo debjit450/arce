@@ -113,16 +113,23 @@ local request_id = ARGV[7]
 
 redis.call("ZREMRANGEBYSCORE", key, "-inf", now - window_ms)
 
-local current = redis.call("ZCARD", key)
+local elements = redis.call("ZRANGE", key, 0, -1)
+local current = 0
+for _, elem in ipairs(elements) do
+  -- elem format is "requestId:cost"
+  local elem_cost = string.match(elem, ":(%d+)$")
+  if elem_cost then
+    current = current + tonumber(elem_cost)
+  end
+end
+
 local allowed = 0
 local retry_after_ms = 0
 
 if (current + cost) <= limit then
   allowed = 1
   if consume == 1 then
-    for i = 1, cost do
-      redis.call("ZADD", key, now, request_id .. ":" .. i)
-    end
+    redis.call("ZADD", key, now, request_id .. ":" .. tostring(cost))
     current = current + cost
   end
 else
@@ -131,6 +138,7 @@ else
     retry_after_ms = math.max(0, window_ms - (now - tonumber(oldest[2])))
   end
 end
+
 
 redis.call("PEXPIRE", key, ttl_ms)
 

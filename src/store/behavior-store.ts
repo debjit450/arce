@@ -57,8 +57,6 @@ export class BehaviorStore {
   private keys(subject: string) {
     return {
       requestTenSecond: `${this.prefix}:behavior:req10s:${subject}`,
-      fingerprints: `${this.prefix}:behavior:fingerprint:${subject}`,
-      routes: `${this.prefix}:behavior:route:${subject}`,
       denials: `${this.prefix}:behavior:denials:${subject}`,
       missingUserAgent: `${this.prefix}:behavior:missing-ua:${subject}`,
       block: `${this.prefix}:block:${subject}`,
@@ -80,13 +78,20 @@ export class BehaviorStore {
     const fingerprintHash = hashValue(event.fingerprint);
     const routeHash = hashValue(event.route);
 
+    const fingerprintKey = `${this.prefix}:behavior:fp:${subject}:${fingerprintHash}`;
+    const routeKey = `${this.prefix}:behavior:routes:${subject}:${minuteBucket}`;
+
     const write = this.client.multi();
     write.hIncrBy(keys.requestTenSecond, tenSecondBucket, 1);
     write.pExpire(keys.requestTenSecond, TWENTY_MINUTES_MS);
-    write.hIncrBy(keys.fingerprints, `${minuteBucket}:${fingerprintHash}`, 1);
-    write.pExpire(keys.fingerprints, TEN_MINUTES_MS);
-    write.hIncrBy(keys.routes, `${minuteBucket}:${routeHash}`, 1);
-    write.pExpire(keys.routes, TEN_MINUTES_MS);
+    
+    // Store fingerprint count for this specific hash
+    write.hIncrBy(fingerprintKey, minuteBucket, 1);
+    write.pExpire(fingerprintKey, TEN_MINUTES_MS);
+    
+    // Track unique routes via HyperLogLog
+    write.pfAdd(routeKey, routeHash);
+    write.pExpire(routeKey, TEN_MINUTES_MS);
 
     if (!event.userAgent) {
       write.hIncrBy(keys.missingUserAgent, minuteBucket, 1);
@@ -95,18 +100,22 @@ export class BehaviorStore {
 
     await write.exec();
 
+    // We only need the current and previous minute buckets for fingerprints
+    const prevMinuteBucket = (Number(minuteBucket) - 60_000).toString();
+    const routePrevKey = `${this.prefix}:behavior:routes:${subject}:${prevMinuteBucket}`;
+
     const [
       requestBuckets,
-      fingerprintBuckets,
-      routeBuckets,
+      fingerprintVals,
+      uniqueRouteCount,
       denialBuckets,
       missingUserAgentBuckets,
       blockReason,
       blockTtlMs
     ] = await Promise.all([
       this.client.hGetAll(keys.requestTenSecond),
-      this.client.hGetAll(keys.fingerprints),
-      this.client.hGetAll(keys.routes),
+      this.client.hmGet(fingerprintKey, [minuteBucket, prevMinuteBucket]),
+      this.client.pfCount([routeKey, routePrevKey]),
       this.client.hGetAll(keys.denials),
       this.client.hGetAll(keys.missingUserAgent),
       this.client.get(keys.block),
@@ -125,31 +134,12 @@ export class BehaviorStore {
       requestBuckets,
       event.timestampMs
     );
-    const duplicateFingerprintCount = Object.entries(fingerprintBuckets).reduce(
-      (total, [field, value]) => {
-        const [bucket, storedHash] = field.split(":");
-        if (
-          storedHash === fingerprintHash &&
-          Number(bucket) >= event.timestampMs - 60_000
-        ) {
-          return total + Number(value);
-        }
+    const duplicateFingerprintCount = (Number(fingerprintVals[0]) || 0) + (Number(fingerprintVals[1]) || 0);
 
-        return total;
-      },
-      0
-    );
     const duplicateFingerprintRatio =
       trailingMinuteCount > 0
         ? duplicateFingerprintCount / trailingMinuteCount
         : 0;
-    const uniqueRouteCount = new Set(
-      Object.keys(routeBuckets)
-        .filter(
-          (field) => Number(field.split(":")[0]) >= event.timestampMs - 60_000
-        )
-        .map((field) => field.split(":")[1])
-    ).size;
     const deniedLastFiveMinutes = sumBuckets(
       denialBuckets,
       event.timestampMs - FIVE_MINUTES_MS
