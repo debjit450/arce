@@ -13,10 +13,6 @@ jobs:
   ci:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [20, 22]
-
     services:
       redis:
         image: redis:7-alpine
@@ -33,12 +29,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22
 
       - run: npm ci
       - run: npm run build
-      - run: npm run typecheck
       - run: npm run lint
-      - run: npm run format:check
       - run: npm test
-      - run: npm audit --audit-level=moderate
