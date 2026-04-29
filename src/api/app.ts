@@ -5,6 +5,10 @@ import express, {
   type Response
 } from "express";
 import path from "node:path";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import pinoHttp from "pino-http";
 
 import { ZodError } from "zod";
 
@@ -32,14 +36,21 @@ export function createServerApp(args: CreateServerAppArgs): Express {
 
   app.disable("x-powered-by");
 
-  // Security headers
-  app.use((_request, response, next) => {
-    response.setHeader("X-Content-Type-Options", "nosniff");
-    response.setHeader("X-Frame-Options", "DENY");
-    response.setHeader("X-XSS-Protection", "1; mode=block");
-    response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-    next();
+  // Security and Logging middleware
+  app.use(helmet());
+  app.use(cors());
+  app.use(pinoHttp({
+    autoLogging: false,
+    quietReqLogger: true
+  }));
+
+  // Global rate limiter for the ARCE endpoints themselves
+  const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    limit: 10000, // 10k requests per 15 mins per IP
+    message: { error: "Too many requests to ARCE itself. Please slow down." }
   });
+  app.use(globalLimiter);
 
   app.use(express.json({ limit: "1mb" }));
   app.use("/static", express.static(staticDir));
@@ -71,7 +82,7 @@ export function createServerApp(args: CreateServerAppArgs): Express {
   app.use(
     (
       error: unknown,
-      _request: Request,
+      request: Request,
       response: Response,
       _next: NextFunction
     ) => {
@@ -87,7 +98,7 @@ export function createServerApp(args: CreateServerAppArgs): Express {
       }
 
       if (error instanceof Error) {
-        console.error("Unhandled error:", error);
+        request.log.error(error, "Unhandled error during request processing");
       }
 
       response.status(500).json({

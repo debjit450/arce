@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { RequestHandler } from "express";
 
 import { runtimeConfig } from "../../../configs/runtime";
@@ -14,13 +15,32 @@ export function createAuthMiddleware(): RequestHandler {
     const configuredKey = runtimeConfig.apiKey;
 
     if (!configuredKey) {
+      if (runtimeConfig.isProduction) {
+        response.status(500).json({
+          error: "Internal Server Error: Missing API_KEY in production."
+        });
+        return;
+      }
       next();
       return;
     }
 
     const provided = request.header("x-api-key");
 
-    if (!provided || provided !== configuredKey) {
+    if (!provided) {
+      response.status(401).json({
+        error: "Unauthorized. Provide a valid x-api-key header."
+      });
+      return;
+    }
+
+    const providedBuffer = Buffer.from(provided);
+    const configuredBuffer = Buffer.from(configuredKey);
+
+    if (
+      providedBuffer.length !== configuredBuffer.length ||
+      !crypto.timingSafeEqual(providedBuffer, configuredBuffer)
+    ) {
       response.status(401).json({
         error: "Unauthorized. Provide a valid x-api-key header."
       });

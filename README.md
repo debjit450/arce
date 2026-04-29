@@ -191,7 +191,8 @@ No formal benchmark numbers are published yet. The current focus is correctness,
 
 ```bash
 npm install
-docker compose up
+cp .env.example .env          # adjust values if needed
+docker compose up -d           # starts Redis in the background
 npm run dev
 ```
 
@@ -207,7 +208,7 @@ Dashboard:
 http://localhost:4000/dashboard
 ```
 
-If you need non-default settings, use the variables documented in [.env.example](./.env.example).
+All configuration is done via environment variables. Copy [.env.example](./.env.example) to `.env` and adjust values as needed.
 
 ## Authentication
 
@@ -243,42 +244,79 @@ Protected endpoints: `/check-limit`, `/consume`, `/api/dashboard-data`
 
 Public endpoints (no key required): `/`, `/health`, `/dashboard`, `/static/*`
 
-## API Example
+## API Reference
 
-Check a limit without consuming:
+ARCE exposes two main endpoints:
+
+- **`POST /check-limit`** — evaluates whether the request would be allowed, **without** consuming from the limiter. Use this for read-ahead checks.
+- **`POST /consume`** — evaluates and **consumes** from the limiter. Use this for actual enforcement.
+
+Both endpoints accept the same request body and return the same response shape.
+
+### Request Fields
+
+| Field              | Required | Default | Description                                                                                  |
+| ------------------ | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| `algorithm`        | ✅       | —       | One of `token_bucket`, `sliding_window`, `leaky_bucket`                                      |
+| `route`            | —        | `"/"`   | The API route being accessed                                                                 |
+| `method`           | —        | `"GET"` | HTTP method                                                                                  |
+| `userId`           | \*       | —       | User identifier (max 256 chars)                                                              |
+| `ip`               | \*       | —       | Client IP address (max 64 chars)                                                             |
+| `identifier`       | \*       | —       | Custom subject key for `custom` scope (max 256 chars)                                        |
+| `scope`            | —        | auto    | How to derive the subject: `user`, `ip`, `hybrid` (user+ip), or `custom` (uses `identifier`) |
+| `cost`             | —        | `1`     | How many tokens/units this request consumes (1–10)                                           |
+| `fingerprint`      | —        | auto    | A string identifying this exact request shape, used for duplicate detection (max 256 chars)   |
+| `baseLimitPerMinute`| —       | `100`   | Override the default rate limit for this request (10–10,000)                                  |
+| `metadata.userAgent`| —       | —       | The client's user-agent string, used for missing-UA abuse detection                          |
+
+\* At least one of `userId`, `ip`, or `identifier` must be provided.
+
+### Example: Check a limit
 
 ```bash
 curl -X POST http://localhost:4000/check-limit \
   -H "Content-Type: application/json" \
-  -d "{\"algorithm\":\"token_bucket\",\"route\":\"/api/orders\",\"method\":\"GET\",\"userId\":\"user-42\",\"ip\":\"203.0.113.8\",\"scope\":\"hybrid\"}"
+  -H "x-api-key: $ARCE_API_KEY" \
+  -d '{"algorithm":"token_bucket","route":"/api/orders","method":"GET","userId":"user-42","ip":"203.0.113.8","scope":"hybrid"}'
 ```
 
-Consume from the limiter:
+### Example: Consume from the limiter
 
 ```bash
 curl -X POST http://localhost:4000/consume \
   -H "Content-Type: application/json" \
-  -d "{\"algorithm\":\"sliding_window\",\"route\":\"/api/search\",\"method\":\"GET\",\"ip\":\"203.0.113.8\",\"scope\":\"ip\"}"
+  -H "x-api-key: $ARCE_API_KEY" \
+  -d '{"algorithm":"sliding_window","route":"/api/search","method":"GET","ip":"203.0.113.8","scope":"ip"}'
 ```
 
-Example request shape:
+### Example Response
 
 ```json
 {
-  "algorithm": "token_bucket",
-  "route": "/api/orders",
-  "method": "GET",
-  "userId": "user-42",
-  "ip": "203.0.113.8",
-  "scope": "hybrid",
+  "mode": "consume",
+  "allowed": true,
+  "blocked": false,
+  "subject": "ip:203.0.113.8",
+  "fingerprint": "GET:/api/search",
+  "algorithm": "sliding_window",
   "cost": 1,
-  "fingerprint": "GET:/api/orders?status=open",
-  "baseLimitPerMinute": 100,
-  "metadata": {
-    "userAgent": "curl/8.6.0"
-  }
+  "anomalies": [],
+  "effectivePolicy": {
+    "tier": "normal",
+    "effectiveLimitPerMinute": 100,
+    "riskScore": 0
+  },
+  "decision": {
+    "allowed": true,
+    "remaining": 99,
+    "retryAfterMs": 0,
+    "resetAfterMs": 60000
+  },
+  "evaluatedAt": "2026-04-29T05:30:00.000Z"
 }
 ```
+
+When `allowed` is `false`, the HTTP status is `429`. The `decision.retryAfterMs` field tells the client how long to wait before retrying.
 
 ## SDK Example
 
@@ -312,8 +350,15 @@ import { ArceClient } from "./src/sdk/client";
 import { createArceMiddleware } from "./src/sdk/express-middleware";
 
 const app = express();
-const client = new ArceClient({ baseUrl: "http://localhost:4000" });
+const client = new ArceClient({
+  baseUrl: "http://localhost:4000",
+  headers: { "x-api-key": process.env.ARCE_API_KEY ?? "" }
+});
 
+// All routes below this middleware are rate-limited.
+// The middleware calls ARCE's /consume endpoint for each request.
+// If the request is denied, the middleware returns 429 with
+// x-rate-limit-remaining and x-rate-limit-reset-ms headers.
 app.use(
   createArceMiddleware({
     client,
@@ -326,10 +371,11 @@ app.use(
 
 ## Production Integration Notes
 
-- Put ARCE behind your API tier or call it from application middleware.
-- Use a stable subject key strategy: user, IP, or hybrid depending on your threat model.
-- Keep route fingerprinting intentional. High-cardinality fingerprints reduce the value of duplicate detection.
-- Tune baseline limits and block durations per environment.
+- **Deployment**: Put ARCE behind your API tier or call it from application middleware. ARCE itself is not designed to be internet-facing — it should be accessible only from your internal network or application pods.
+- **Subject strategy**: Use a stable subject key strategy (`user`, `ip`, or `hybrid`) depending on your threat model. `hybrid` (user+IP) is strictest — it tracks the same user from different IPs separately.
+- **Fingerprinting**: Keep route fingerprinting intentional. A fingerprint like `GET:/api/orders?status=open` groups similar requests; `GET:/api/orders?status=open&page=3&t=1719000000` would create unique fingerprints for every request, defeating duplicate detection.
+- **Tuning**: Start with the defaults (`100 req/min` baseline, `20 req/min` suspicious, `300s` block). Observe the dashboard for false positives before tightening thresholds.
+- **Redis**: Use a dedicated Redis instance or a dedicated database number (`redis://localhost:6379/1`) to isolate ARCE state from your application data. The `SERVICE_NAME` prefix prevents key collisions if sharing a cluster.
 
 ## Configuration
 

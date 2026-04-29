@@ -22,6 +22,8 @@ Keeping them separate makes each path easier to reason about and change.
 
 ARCE is designed to be inspectable and operationally credible. Burst ratios, duplicate request patterns, route fan-out, and repeated denials are understandable signals that an engineer can tune without a training pipeline.
 
+> **How to tune:** The thresholds for these heuristics (e.g., "15 requests in 10s with a 3x multiplier") are currently hardcoded in `src/core/abuse-detector.ts`. If you are deploying ARCE to production, you should review and modify these thresholds in that file to match your application's normal traffic patterns.
+
 ## Why A Minimal Dashboard
 
 The dashboard is intentionally thin. Its job is to make the limiter observable during development and demos, not to become a full observability platform.

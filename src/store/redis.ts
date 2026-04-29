@@ -11,9 +11,10 @@ export async function createRedisConnection(): Promise<RedisClient> {
       reconnectStrategy(retries: number) {
         if (retries > 10) {
           console.error(
-            `Redis reconnection failed after ${retries} attempts. Giving up.`
+            `Redis reconnection failed after ${retries} attempts. Giving up and crashing process.`
           );
-          return new Error("Redis reconnection limit reached.");
+          // Exit process so container orchestrator (e.g. Kubernetes/Docker) restarts the service.
+          process.exit(1);
         }
 
         const delay = Math.min(retries * 200, 5_000);

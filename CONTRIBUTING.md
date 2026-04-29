@@ -23,6 +23,8 @@ docker compose up
 npm run dev
 ```
 
+> **Note on Authentication:** If you set `API_KEY` in your `.env` file, you must pass `x-api-key` in your request headers when testing locally. Leaving `API_KEY` empty disables authentication for easier development.
+
 5. Optional smoke check:
 
 ```bash
@@ -36,6 +38,7 @@ npm run build
 npm run typecheck
 npm run lint
 npm run test
+npm run format
 npm run format:check
 ```
 
