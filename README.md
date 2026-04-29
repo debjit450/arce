@@ -211,18 +211,37 @@ If you need non-default settings, use the variables documented in [.env.example]
 
 ## Authentication
 
-When `API_KEY` is set in the environment, ARCE requires all protected endpoints (`/check-limit`, `/consume`, `/api/dashboard-data`) to include a matching `x-api-key` header.
+ARCE uses a shared API key for protecting its endpoints. The operator generates their own key and configures it via the `API_KEY` environment variable — there is no built-in key issuance system.
 
-When `API_KEY` is not set, authentication is disabled so local development remains frictionless.
+**Setup:**
+
+1. Generate a key using any method you prefer:
+
+```bash
+# Example: generate a random 32-byte hex key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+2. Set it in your `.env` file:
+
+```env
+API_KEY=your-generated-key-here
+```
+
+3. Pass the same key in the `x-api-key` header on every request to a protected endpoint:
 
 ```bash
 curl -X POST http://localhost:4000/consume \
   -H "Content-Type: application/json" \
-  -H "x-api-key: your-secret-key" \
+  -H "x-api-key: your-generated-key-here" \
   -d '{"algorithm":"token_bucket","route":"/api/orders","method":"GET","ip":"203.0.113.8","scope":"ip"}'
 ```
 
-Public endpoints (`/`, `/health`, `/dashboard`, `/static/*`) do not require authentication.
+When `API_KEY` is not set, authentication is disabled so local development remains frictionless.
+
+Protected endpoints: `/check-limit`, `/consume`, `/api/dashboard-data`
+
+Public endpoints (no key required): `/`, `/health`, `/dashboard`, `/static/*`
 
 ## API Example
 
